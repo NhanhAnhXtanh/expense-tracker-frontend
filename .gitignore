@@ -14,13 +14,8 @@ dist-ssr
 *.local
 
 # Environment variables (IMPORTANT: Keep templates, ignore actual secrets)
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-!.env.localhost
-!.env.production
+.env*
+!.env.example
 
 # Editor directories and files
 .vscode/*
