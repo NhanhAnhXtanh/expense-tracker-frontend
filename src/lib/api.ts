@@ -1,24 +1,20 @@
-import axios from 'axios'
-import { oauth2Service } from './oauth2'
+import axios, { type AxiosError } from 'axios'
 
-const apiClient = axios.create({
-    baseURL: `${import.meta.env.VITE_API_URL}${import.meta.env.VITE_API_BASE_PATH}`,
+const baseURL = `${import.meta.env.VITE_API_URL}${import.meta.env.VITE_API_BASE_PATH}`
+
+export const api = axios.create({
+    baseURL,
     headers: {
         'Content-Type': 'application/json',
     },
+    withCredentials: true,  // ✅ Automatically send cookies with every request
 })
 
-// Request interceptor - Add auth token automatically
-apiClient.interceptors.request.use(
-    async (config) => {
-        try {
-            // Get OAuth2 token
-            const token = await oauth2Service.getToken()
-            config.headers.Authorization = `Bearer ${token}`
-        } catch (error) {
-            console.error('Failed to add authorization token:', error)
-            return Promise.reject(error)
-        }
+// Request interceptor - NO LONGER NEEDED to add Authorization header
+// Cookies are sent automatically by browser
+api.interceptors.request.use(
+    (config) => {
+        console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`)
         return config
     },
     (error) => {
@@ -26,37 +22,50 @@ apiClient.interceptors.request.use(
     }
 )
 
-// Response interceptor - Handle errors globally
-apiClient.interceptors.response.use(
+// Response interceptor - Handle errors
+api.interceptors.response.use(
     (response) => {
         return response
     },
-    (error) => {
-        if (error.response) {
-            // Server responded with error status
-            console.error('API Error:', error.response.status, error.response.data)
+    async (error: AxiosError) => {
+        const originalRequest = error.config as any
 
-            // Handle specific error codes
-            if (error.response.status === 401) {
-                // Unauthorized - clear token and retry
-                console.error('Unauthorized - Token may be invalid')
-                oauth2Service.clearToken()
-            } else if (error.response.status === 403) {
-                // Forbidden
-                console.error('Forbidden - Insufficient permissions')
-            } else if (error.response.status === 500) {
-                // Server error
-                console.error('Server error - Please try again later')
+        // If 401 and haven't retried yet, try to refresh token
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            originalRequest._retry = true
+
+            try {
+                // Call refresh endpoint (cookie will be sent automatically)
+                await axios.post(
+                    `${import.meta.env.VITE_API_URL}/api/auth/refresh`,
+                    {},
+                    { withCredentials: true }
+                )
+
+                // Retry original request
+                return api.request(originalRequest)
+            } catch (refreshError) {
+                // Refresh failed, redirect to login
+                console.error('Token refresh failed, redirecting to login')
+                window.location.href = '/login'
+                return Promise.reject(refreshError)
             }
-        } else if (error.request) {
-            // Request made but no response
-            console.error('Network Error:', error.request)
-        } else {
-            // Something else happened
-            console.error('Error:', error.message)
         }
+
+        // Log error details
+        if (error.response) {
+            console.error('API Error:', error.response.status, error.response.data)
+        } else {
+            console.error('Network Error:', error.message)
+        }
+
+        // Handle 403 Forbidden
+        if (error.response?.status === 403) {
+            console.error('Forbidden - Insufficient permissions')
+        }
+
         return Promise.reject(error)
     }
 )
 
-export default apiClient
+export default api

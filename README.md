@@ -1,6 +1,6 @@
 # Expense Tracker Frontend
 
-React + TypeScript + Vite + shadcn/ui + Tailwind CSS
+React + TypeScript + Vite + shadcn/ui + Tailwind CSS + Google Login
 
 ## 🚀 Getting Started
 
@@ -15,110 +15,139 @@ pnpm dev
 pnpm build
 ```
 
-### Preview
-```bash
-pnpm preview
-```
+## 🔐 Google Login Setup
 
-## 🔌 API Configuration
+### 1. Google Cloud Console
 
-### Environment Setup
+1. Create OAuth ClientID (Web Application)
+2. Add authorized JavaScript origin: `http://localhost:5173`
+3. Copy Client ID
 
-1. Copy `.env.example` to `.env.local`:
+### 2. Environment Setup
+
 ```bash
 cp .env.example .env.local
 ```
-   
-   ⚠️ **Security:** Never commit `.env.local` or `.env.production`! See `SECURITY.md` for details.
 
-
-2. Configure your backend credentials:
+Edit `.env.local`:
 ```env
 VITE_API_URL=http://localhost:8081
 VITE_API_BASE_PATH=/rest
-VITE_OAUTH2_TOKEN_URL=http://localhost:8081/oauth2/token
-VITE_OAUTH2_CLIENT_ID=my-client
-VITE_OAUTH2_CLIENT_SECRET=my-secret
+VITE_GOOGLE_CLIENT_ID=your-google-client-id-here
 ```
 
-### Test Connection
+⚠️ **Security:** Never commit `.env.local`!
 
-The app includes an OAuth2 test page:
+## 🔌 Backend (Jmix) Setup Required
 
-1. Start your backend on port 8081
-2. Run `pnpm dev`
-3. Open http://localhost:5173
-4. Click **"Get Token"** → Authenticates with OAuth2
-5. Click **"Fetch Users"** → Calls `/rest/entities/User`
+Your Jmix backend must be configured as a **Resource Server** to verify Google JWT tokens.
 
-**API automatically handles:**
-- OAuth2 token fetching
-- Token caching
-- Auto-retry on 401
-- Bearer token in headers
+### Backend Requirements:
 
+1. **Disable Jmix UI Login:**
+   ```properties
+   jmix.ui.login-view-id=
+   ```
 
+2. **Add Spring Security Resource Server:**
+   ```gradle
+   implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+   ```
+
+3. **Configure JWT Verification:**
+   ```properties
+   spring.security.oauth2.resourceserver.jwt.issuer-uri=https://accounts.google.com
+   ```
+
+4. **Security Config:**
+   ```java
+   @Configuration
+   @EnableWebSecurity
+   public class SecurityConfig {
+     @Bean
+     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+       http
+         .csrf(csrf -> csrf.disable())
+         .authorizeHttpRequests(auth -> auth
+           .requestMatchers("/actuator/**").permitAll()
+           .anyRequest().authenticated()
+         )
+         .oauth2ResourceServer(oauth -> oauth.jwt());
+       return http.build();
+     }
+   }
+   ```
+
+5. **Map Google User to Jmix:**
+   - Extract `sub`, `email`, `name` from JWT
+   - Create or update User entity
+   - Assign default roles (e.g., `ui-minimal`)
 
 ## 📦 Tech Stack
 
 - **React 19** - UI library
 - **TypeScript** - Type safety
 - **Vite** - Build tool
-- **Tailwind CSS v4** - Utility-first CSS
-- **shadcn/ui** - UI component library
-- **Radix UI** - Headless UI primitives
+- **Tailwind CSS v4** - Styling
+- **shadcn/ui** - UI components
+- **@react-oauth/google** - Google Login
+- **React Router** - Navigation
 
-## 🎨 shadcn/ui
-
-### Adding Components
+## 🎨 shadcn/ui Components
 
 ```bash
 pnpm dlx shadcn@latest add [component-name]
 ```
 
-**Examples:**
-```bash
-pnpm dlx shadcn@latest add button
-pnpm dlx shadcn@latest add card
-pnpm dlx shadcn@latest add input
-pnpm dlx shadcn@latest add dialog
+See: https://ui.shadcn.com
+
+## 📖 How It Works
+
+```
+User clicks "Sign in with Google"
+   ↓
+Google authenticates user
+   ↓
+React receives ID Token (JWT)
+   ↓
+Token stored in sessionStorage
+   ↓
+All API calls include: Authorization: Bearer {token}
+   ↓
+Jmix verifies JWT signature
+   ↓
+Maps Google user to Jmix User entity
+   ↓
+Returns data
 ```
 
-### Usage
+## 🔒 Security
 
-```tsx
-import { Button } from '@/components/ui/button'
+- ✅ Google JWT tokens
+- ✅ No client secret in frontend
+- ✅ Backend verifies all tokens
+- ✅ Tokens stored in sessionStorage (auto-cleared on browser close)
+- ❌ No passwords
+- ❌ No session cookies
 
-function App() {
-  return <Button>Click me</Button>
-}
-```
+## 📝 Environment Variables
 
-### Available Components
-- `button`, `card`, `dialog`, `input`, `select`, `table`, `toast`, `form`, `dropdown-menu`, `tabs`, and more
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `VITE_API_URL` | Jmix backend URL | ✅ |
+| `VITE_API_BASE_PATH` | API base path (usually `/rest`) | ✅ |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth Client ID | ✅ |
 
-📚 See all components: https://ui.shadcn.com/docs/components
+## 🌐 Production Deployment
 
-## 🔧 Path Aliases
+1. Update `.env.production` with production URLs
+2. Build: `pnpm build`
+3. Deploy `dist/` folder to static hosting
+4. Update Google OAuth authorized origins to include production domain
+5. Ensure backend CORS allows production frontend domain
 
-Use `@/` to import from `src/`:
+## 📚 Documentation
 
-```tsx
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-```
-
-**Note:** If you see red squiggly lines in your IDE, restart the TypeScript server:
-- VSCode: `Ctrl+Shift+P` → `TypeScript: Restart TS Server`
-
-## 🌙 Dark Mode
-
-Add `className="dark"` to `<html>` element to enable dark mode.
-
-## 📖 Documentation
-
-- [shadcn/ui](https://ui.shadcn.com)
-- [Tailwind CSS](https://tailwindcss.com)
-- [Radix UI](https://www.radix-ui.com)
-- [React](https://react.dev)
-- [Vite](https://vite.dev)
+- [Google OAuth](https://developers.google.com/identity/protocols/oauth2)
+- [React OAuth Google](https://www.npmjs.com/package/@react-oauth/google)
+- [Spring Security OAuth2 Resource Server](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html)
