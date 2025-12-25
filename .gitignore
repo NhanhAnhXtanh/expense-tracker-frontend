@@ -18,7 +18,7 @@ dist-ssr
 !.env.example
 
 # Git cleanup tools
-.bfg-report/
+..bfg-report/
 
 # Editor directories and files
 .vscode/*
